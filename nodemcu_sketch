@@ -1,0 +1,244 @@
+#include <ESP8266WiFi.h>
+WiFiServer server(80);
+
+#define MOTOR_R_IN1 16
+#define MOTOR_R_IN2 5
+#define MOTOR_R_PWM 4
+
+#define MOTOR_L_IN1 0
+#define MOTOR_L_IN2 2
+#define MOTOR_L_PWM 14
+
+#define US_ECHO 12
+#define US_TRIG 13
+
+#define LIGHTS_FRONT 15
+#define LIGHTS_Backward 3
+
+int motor_speed_motor_r = 0;
+int correction_motor_speed_motor_r = 0; //increase this value of your car is turns left for itself
+int correction_motor_speed_motor_l = 0; //increase this value of your car is turns right for itsefl
+int motor_speed_motor_l = 0;
+
+int motor_speed = 512;
+
+int turning = 5;
+int drive = 5;
+long EchoTime;
+int  Distance;
+int minDistance = 25;
+String StringDistance = "";
+int mode = 1;
+WiFiClient client;
+
+
+void setup()
+{
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP("RcCar", "qwertyuiop");
+  server.begin();
+  Serial.begin(115200);
+  IPAddress HTTPS_ServerIP = WiFi.softAPIP();
+  Serial.println(HTTPS_ServerIP);
+
+  pinMode(MOTOR_R_IN1, OUTPUT);
+  pinMode(MOTOR_R_IN2, OUTPUT);
+  pinMode(MOTOR_R_PWM, OUTPUT);
+
+  pinMode(MOTOR_L_IN1, OUTPUT);
+  pinMode(MOTOR_L_IN2, OUTPUT);
+  pinMode(MOTOR_L_PWM, OUTPUT);
+
+  pinMode(US_TRIG, OUTPUT);
+  pinMode(US_ECHO, INPUT);
+
+  pinMode(LIGHTS_FRONT, OUTPUT);
+  pinMode(LIGHTS_Backward, OUTPUT);
+
+}
+
+void loop()
+{
+
+  WiFiClient client = server.available();
+
+  if (!client) {
+    if (mode == 2) {
+      digitalWrite(US_TRIG, LOW);
+      delayMicroseconds(2);
+      digitalWrite(US_TRIG, HIGH);
+      delayMicroseconds(10);
+      digitalWrite(US_TRIG, LOW);
+      EchoTime = pulseIn(US_ECHO, HIGH);
+      Distance = EchoTime / 58;
+      Serial.println(Distance);
+      if (Distance <= minDistance)
+      {
+        Right();
+      }
+      else
+      {
+        Forward();
+      }
+    }
+    return;
+  }
+
+  String request = client.readStringUntil('\r');
+  Serial.println(request);
+
+  if (request.substring(4, 11) == "/tryb1/") {
+    mode = 1;
+    Stop();
+  }
+  if (request.substring(4, 11) == "/tryb2/") {
+    mode = 2;
+    Stop();
+  }
+
+  if (request.substring(4, 13) == "/czulosc/") {
+    minDistance = request.substring(13, 15).toInt();
+  }
+  if (request.substring(4, 14) == "/predkosc/") {
+    motor_speed = request.substring(14, 18).toInt();
+    motor_speed_motor_r = motor_speed;
+    motor_speed_motor_l = motor_speed_motor_r;
+  }
+
+  if (request.substring(4, 12) == "/connect") {
+    client.println("HTTP/1.1 200 OK");
+    client.println("Content-Type: text/html");
+    client.println("");
+    client.println("<!DOCTYPE HTML>");
+    client.println("<html>");
+    client.println("<center><h2>CONNECTED</h2></center>");
+    client.println("</html>");
+  }
+
+
+  if (request.substring(4, 8) == "/pon") {
+    digitalWrite(LIGHTS_FRONT, HIGH);
+  }
+  if (request.substring(4, 9) == "/poff") {
+    digitalWrite(LIGHTS_FRONT, LOW);
+  }
+  if (request.substring(4, 8) == "/ton") {
+    digitalWrite(LIGHTS_Backward, HIGH);
+  }
+  if (request.substring(4, 9) == "/toff") {
+    digitalWrite(LIGHTS_Backward, LOW);
+  }
+
+
+  if (mode == 1)
+  {
+    if (request.substring(4, 12) == "/forward")
+    {
+      client.println("HTTP/1.1 200 OK");
+      client.println("Content-Type: text/html");
+      client.println("");
+      client.println("<!DOCTYPE HTML>");
+      client.println("<html>");
+      client.println("<h2> MOVING FORWARD </h2>");
+      client.println("</html>");
+      Forward();
+    }
+    if (request.substring(4, 13) == "/backward")
+    {
+      client.println("HTTP/1.1 200 OK");
+      client.println("Content-Type: text/html");
+      client.println("");
+      client.println("<!DOCTYPE HTML>");
+      client.println("<html>");
+      client.println("<h2> MOVING BACKWARD </h2>");
+      client.println("</html>");
+      Backward();
+    }
+
+    if (request.substring(4, 9) == "/left")
+    {
+      client.println("HTTP/1.1 200 OK");
+      client.println("Content-Type: text/html");
+      client.println("");
+      client.println("<!DOCTYPE HTML>");
+      client.println("<html>");
+      client.println("<h2> TURNING LEFT </h2>");
+      client.println("</html>");
+      Left();
+    }
+    if (request.substring(4, 10) == "/right")
+    {
+      client.println("HTTP/1.1 200 OK");
+      client.println("Content-Type: text/html");
+      client.println("");
+      client.println("<!DOCTYPE HTML>");
+      client.println("<html>");
+      client.println("<h2> TURNING RIGHT </h2>");
+      client.println("</html>");
+      Right();
+    }
+    if (request.substring(4, 9) == "/stop")
+    {
+      client.println("HTTP/1.1 200 OK");
+      client.println("Content-Type: text/html");
+      client.println("");
+      client.println("<!DOCTYPE HTML>");
+      client.println("<html>");
+      client.println("<h2>STOP</h2>");
+      client.println("</html>");
+      Stop();
+    }
+
+  }
+}
+
+void Forward() {
+  Serial.println("FORWARD");
+  analogWrite(MOTOR_R_PWM, motor_speed_motor_r);
+  digitalWrite(MOTOR_R_IN1, HIGH);
+  digitalWrite(MOTOR_R_IN2, LOW);
+
+  analogWrite(MOTOR_L_PWM, motor_speed_motor_l);
+  digitalWrite(MOTOR_L_IN1, HIGH);
+  digitalWrite(MOTOR_L_IN2, LOW);
+}
+
+void Backward() {
+  Serial.println("BACKWARD");
+  analogWrite(MOTOR_R_PWM, motor_speed_motor_r);
+  digitalWrite(MOTOR_R_IN1, LOW);
+  digitalWrite(MOTOR_R_IN2, HIGH);
+
+  analogWrite(MOTOR_L_PWM, motor_speed_motor_l);
+  digitalWrite(MOTOR_L_IN1, LOW);
+  digitalWrite(MOTOR_L_IN2, HIGH);
+}
+
+void Right() {
+  Serial.println("RIGHT");
+  analogWrite(MOTOR_R_PWM, motor_speed_motor_r);
+  digitalWrite(MOTOR_R_IN1, HIGH);
+  digitalWrite(MOTOR_R_IN2, LOW);
+
+  analogWrite(MOTOR_L_PWM, motor_speed_motor_l);
+  digitalWrite(MOTOR_L_IN1, LOW);
+  digitalWrite(MOTOR_L_IN2, HIGH);
+}
+void Left() {
+  Serial.println("LEFT");
+  analogWrite(MOTOR_R_PWM, motor_speed_motor_r);
+  digitalWrite(MOTOR_R_IN1, LOW);
+  digitalWrite(MOTOR_R_IN2, HIGH);
+
+  analogWrite(MOTOR_L_PWM, motor_speed_motor_l);
+  digitalWrite(MOTOR_L_IN1, HIGH);
+  digitalWrite(MOTOR_L_IN2, LOW);
+}
+void Stop() {
+  Serial.println("STOP");
+  digitalWrite(MOTOR_R_IN1, LOW);
+  digitalWrite(MOTOR_R_IN2, LOW);
+  digitalWrite(MOTOR_L_IN1, LOW);
+  digitalWrite(MOTOR_L_IN2, LOW);
+
+}
